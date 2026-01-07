@@ -195,6 +195,18 @@ if st.session_state.results is not None:
     st.dataframe(coef_df, use_container_width=True)
 
     # -----------------------------
+    # Model Accuracy
+    # -----------------------------
+    rmse = np.sqrt(mean_squared_error(elev, fit))
+
+    tidal_range = np.nanmax(fit) - np.nanmin(fit)
+    rmse_percent = (rmse / tidal_range) * 100 if tidal_range != 0 else np.nan
+
+    st.subheader("Model Accuracy")
+    st.metric("RMSE", f"{rmse:.2f} cm / {rmse_percent:.2f} %")
+    st.metric("Tidal Range", f"{tidal_range:.2f} cm")
+
+    # -----------------------------
     # CSV download
     # -----------------------------
     output_df = pd.DataFrame({
@@ -216,4 +228,3 @@ if st.session_state.results is not None:
 
 else:
     st.info("Paste elevation data, set parameters, then click **Run Analysis**.")
-
