@@ -8,10 +8,19 @@ from utide import solve, reconstruct, ut_constants
 from datetime import datetime, timedelta
 from sklearn.metrics import mean_squared_error
 
+# -----------------------------
+# Streamlit config
+# -----------------------------
 st.set_page_config(page_title="Tidal Harmonic Analysis (UTide)", layout="wide")
 
 st.title("🌊 Tidal Harmonic Analysis using UTide")
 st.markdown("Paste **hourly water level data (cm)** directly.")
+
+# -----------------------------
+# Session state initialization
+# -----------------------------
+if "results" not in st.session_state:
+    st.session_state.results = None
 
 # -----------------------------
 # Sidebar inputs
@@ -69,12 +78,13 @@ if run_button:
         st.error(f"Error reading pasted data: {e}")
         st.stop()
 
-    # Generate hourly datetime
+    # Generate hourly datetime array
     time_np = np.array(
         [start_datetime + timedelta(hours=i) for i in range(len(elev))],
         dtype="datetime64"
     )
 
+    # Harmonic analysis
     coef = solve(
         time_np,
         elev,
@@ -85,19 +95,78 @@ if run_button:
     )
 
     tide_fit = reconstruct(time_np, coef)
+    residual = elev - tide_fit.h
 
     # -----------------------------
-    # Plot
+    # Save results to session state
     # -----------------------------
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.plot(time_np, elev, label="Observed")
-    ax.plot(time_np, tide_fit.h, label="Fitted Tide", linewidth=2)
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Water level (cm)")
-    ax.set_title("Observed vs Fitted Tide")
-    ax.legend()
-    ax.grid(True)
+    st.session_state.results = {
+        "time": time_np,
+        "observed": elev,
+        "fit": tide_fit.h,
+        "residual": residual,
+        "coef": coef
+    }
 
+# -----------------------------
+# Plot & outputs (persistent)
+# -----------------------------
+if st.session_state.results is not None:
+
+    time_np = st.session_state.results["time"]
+    elev = st.session_state.results["observed"]
+    fit = st.session_state.results["fit"]
+    residual = st.session_state.results["residual"]
+    coef = st.session_state.results["coef"]
+
+    # -----------------------------
+    # Elsevier-style plot with residual
+    # -----------------------------
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1,
+        figsize=(12, 7),
+        sharex=True,
+        gridspec_kw={"height_ratios": [3, 1]}
+    )
+
+    ax1.plot(
+        time_np, elev,
+        color="black", linewidth=2.4,
+        label="Observed"
+    )
+
+    ax1.plot(
+        time_np, fit,
+        color="black",
+        linestyle=(0, (5, 3)),
+        linewidth=1.4,
+        marker="o",
+        markersize=5,
+        markerfacecolor="white",
+        markeredgecolor="black",
+        markeredgewidth=1.2,
+        markevery=24,
+        label="Harmonic Fit"
+    )
+
+    ax1.set_ylabel("Water Level (cm)")
+    ax1.set_title("Observed and Harmonic-Fitted Tide")
+    ax1.legend(frameon=False, handlelength=3)
+    ax1.grid(False)
+
+    ax2.plot(
+        time_np, residual,
+        color="black",
+        linestyle=":",
+        linewidth=1.2
+    )
+
+    ax2.axhline(0, color="black", linestyle="--", linewidth=1.0)
+    ax2.set_ylabel("Residual (cm)")
+    ax2.set_xlabel("Time")
+    ax2.grid(False)
+
+    plt.tight_layout()
     st.pyplot(fig)
 
     # -----------------------------
@@ -126,46 +195,24 @@ if run_button:
     st.dataframe(coef_df, use_container_width=True)
 
     # -----------------------------
-    # Tidal datums (approximation)
+    # CSV download
     # -----------------------------
-    MSL = coef.mean
-
-    def get_amp(c):
-        return amplitudes[names.index(c)] if c in names else 0
-
-    A_M2 = get_amp("M2")
-    A_S2 = get_amp("S2")
-    A_K1 = get_amp("K1")
-    A_O1 = get_amp("O1")
-
-    Amp_spring = A_M2 + A_S2 + A_K1 + A_O1
-
-    HWS  = MSL + Amp_spring
-    MHWS = MSL + 0.707 * Amp_spring
-    MHWL = MSL + 0.5 * (A_M2 + A_K1)
-    MLWL = MSL - 0.5 * (A_M2 + A_K1)
-    MLWS = MSL - 0.707 * Amp_spring
-    LWS  = MSL - Amp_spring
-
-    datum_df = pd.DataFrame({
-        "Datum": ["HWS", "MHWS", "MHWL", "MSL", "MLWL", "MLWS", "LWS"],
-        "Elevation (cm)": [HWS, MHWS, MHWL, MSL, MLWL, MLWS, LWS]
+    output_df = pd.DataFrame({
+        "datetime": pd.to_datetime(time_np),
+        "observed_cm": elev,
+        "harmonic_fit_cm": fit,
+        "residual_cm": residual
     })
 
-    st.subheader("Tidal Elevations (Approximate)")
-    st.table(datum_df)
+    csv_data = output_df.to_csv(index=False)
 
-    # -----------------------------
-    # Accuracy metrics
-    # -----------------------------
-    rmse = np.sqrt(mean_squared_error(elev, tide_fit.h))
-    tidal_range = HWS - LWS
-    rmse_percent = (rmse / tidal_range) * 100 if tidal_range != 0 else np.nan
-
-    st.subheader("Model Accuracy")
-    st.metric("RMSE (cm)", f"{rmse:.2f}")
-    st.metric("Tidal Range (cm)", f"{tidal_range:.2f}")
-    st.metric("RMSE (%)", f"{rmse_percent:.2f}")
+    st.subheader("Download Time Series Data")
+    st.download_button(
+        label="📥 Download CSV (Observed, Fit, Residual)",
+        data=csv_data,
+        file_name="tidal_harmonic_timeseries.csv",
+        mime="text/csv"
+    )
 
 else:
-    st.info("Paste elevation data, set latitude and start time, then click **Run Analysis**.")
+    st.info("Paste elevation data, set parameters, then click **Run Analysis**.")
