@@ -131,13 +131,13 @@ if st.session_state.results is not None:
 
     ax1.plot(
         time_np, elev,
-        color="black", linewidth=2.4,
+        color="red", linewidth=2.4,
         label="Observed"
     )
 
     ax1.plot(
         time_np, fit,
-        color="black",
+        color="blue",
         linestyle=(0, (5, 3)),
         linewidth=1.4,
         marker="o",
@@ -216,3 +216,4 @@ if st.session_state.results is not None:
 
 else:
     st.info("Paste elevation data, set parameters, then click **Run Analysis**.")
+
