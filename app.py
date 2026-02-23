@@ -5,7 +5,7 @@ import streamlit as st
 import io
 
 from utide import solve, reconstruct, ut_constants
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, time
 from sklearn.metrics import mean_squared_error
 
 # -----------------------------
@@ -33,8 +33,8 @@ latitude = st.sidebar.number_input(
     format="%.6f"
 )
 
-start_date = st.sidebar.date_input("Start date")
-start_time = st.sidebar.time_input("Start time")
+start_date = st.sidebar.date_input("Start date", value=date(2026, 1, 1))
+start_time = st.sidebar.time_input("Start time", value=time(0, 0))
 start_datetime = datetime.combine(start_date, start_time)
 
 all_constituents = sorted([c.upper() for c in ut_constants.const.name])
@@ -193,6 +193,45 @@ if st.session_state.results is not None:
 
     st.subheader("Harmonic Constituents")
     st.dataframe(coef_df, use_container_width=True)
+
+    # -----------------------------
+    # Tidal Datums / Elevations
+    # -----------------------------
+    st.subheader("Tidal Elevations")
+
+    MSL = coef.mean if hasattr(coef, 'mean') else np.mean(elev)
+
+    A_M2 = amplitudes[names.index('M2')] if 'M2' in names else 0
+    A_S2 = amplitudes[names.index('S2')] if 'S2' in names else 0
+    A_K1 = amplitudes[names.index('K1')] if 'K1' in names else 0
+    A_O1 = amplitudes[names.index('O1')] if 'O1' in names else 0
+
+    Amp_spring = A_M2 + A_S2 + A_K1 + A_O1
+
+    HWS  = MSL + Amp_spring
+    MHWS = MSL + 0.707 * Amp_spring
+    MHWL = MSL + 0.5 * (A_M2 + A_K1)
+    MLWL = MSL - 0.5 * (A_M2 + A_K1)
+    MLWS = MSL - 0.707 * Amp_spring
+    LWS  = MSL - Amp_spring
+
+    datum_df = pd.DataFrame(
+        {
+            "Datum": ["HWS", "MHWS", "MHWL", "MSL", "MLWL", "MLWS", "LWS"],
+            "Elevation (cm)": [HWS, MHWS, MHWL, MSL, MLWL, MLWS, LWS],
+            "Description": [
+                "Highest Water Springs",
+                "Mean High Water Springs",
+                "Mean High Water Level",
+                "Mean Sea Level",
+                "Mean Low Water Level",
+                "Mean Low Water Springs",
+                "Lowest Water Springs",
+            ],
+        }
+    )
+
+    st.dataframe(datum_df, use_container_width=True)
 
     # -----------------------------
     # Model Accuracy
